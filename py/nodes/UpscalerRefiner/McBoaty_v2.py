@@ -99,36 +99,50 @@ class UpscalerRefiner_McBoaty_v2(UpscalerRefiner_McBoaty):
         upscaled_height = upscaled_image.shape[1]
         tile_rows = math.floor(upscaled_width // tile_size)
         tile_cols = math.floor(upscaled_height // tile_size)
+        tile_qty = tile_rows * tile_cols
+        feather_mask = upscaled_width / tile_qty        
         
-        tiled_image = image
-        if not per_tile_refiner:
-            tiled_image = upscaled_image
+        image_to_tile = upscaled_image
+        if per_tile_refiner:
+            image_to_tile = image
         
-        grid_images = Image.get_grid_images(tiled_image, tile_rows, tile_cols)
 
         grid_upscales = []
         grid_latents = []
         grid_latent_outputs = []
         output_images = []
-        total = len(grid_images)
         
         if per_tile_refiner:
+            
+            grid_images = Image.get_the_tiles(image_to_tile, tile_rows, tile_cols)
+            total = len(grid_images)
+
             for index, grid_image in enumerate(grid_images):            
                 log(f"tile {index + 1}/{total}", None, None, f"Upscaling {iteration}")
                 _image_grid = grid_image[:,:,:,:3]
                 upscaled_image_grid = comfy_extras.nodes_upscale_model.ImageUpscaleWithModel.upscale(comfy_extras.nodes_upscale_model.ImageUpscaleWithModel, upscale_model, _image_grid)[0]
                 grid_upscales.append(upscaled_image_grid)
+            for index, upscaled_image_grid in enumerate(grid_upscales):
+                if tiled == True:
+                    log(f"tile {index + 1}/{total}", None, None, f"VAEEncodingTiled {iteration}")
+                    latent_image = nodes.VAEEncodeTiled.encode(nodes.VAEEncodeTiled, vae, upscaled_image_grid, tile_size)[0]
+                else:
+                    log(f"tile {index + 1}/{total}", None, None, f"VAEEncoding {iteration}")
+                    latent_image = nodes.VAEEncode.encode(nodes.VAEEncode, vae, upscaled_image_grid)[0]
+                grid_latents.append(latent_image)
+                
         else:
-            grid_upscales = grid_images
-            
-        for index, upscaled_image_grid in enumerate(grid_upscales):
             if tiled == True:
-                log(f"tile {index + 1}/{total}", None, None, f"VAEEncodingTiled {iteration}")
-                latent_image = nodes.VAEEncodeTiled.encode(nodes.VAEEncodeTiled, vae, upscaled_image_grid, tile_size)[0]
+                latent_to_tile = nodes.VAEEncodeTiled.encode(nodes.VAEEncodeTiled, vae, image_to_tile, tile_size)[0]
             else:
-                log(f"tile {index + 1}/{total}", None, None, f"VAEEncoding {iteration}")
-                latent_image = nodes.VAEEncode.encode(nodes.VAEEncode, vae, upscaled_image_grid)[0]
-            grid_latents.append(latent_image)
+                latent_to_tile = nodes.VAEEncode.encode(nodes.VAEEncode, vae, image_to_tile)[0]
+            grid_latents = Image.get_the_tiles(latent_to_tile, tile_rows, tile_cols)
+            total = len(grid_latents)
+            for index, grid_latent in enumerate(grid_latents):            
+                log(f"tile {index + 1}/{total}", None, None, f"Upscaling {iteration}")
+                _latent_grid = grid_latent[:,:,:,:3]
+                upscaled_latent_grid = comfy_extras.nodes_upscale_model.ImageUpscaleWithModel.upscale(comfy_extras.nodes_upscale_model.ImageUpscaleWithModel, upscale_model, _latent_grid)[0]
+                grid_upscales.append(upscaled_latent_grid)            
                     
         for index, latent_image in enumerate(grid_latents):            
             log(f"tile {index + 1}/{total}", None, None, f"Refining {iteration}")
@@ -155,11 +169,9 @@ class UpscalerRefiner_McBoaty_v2(UpscalerRefiner_McBoaty):
                 output = nodes.VAEDecode.decode(nodes.VAEDecode, vae, latent_output)[0].unsqueeze(0)
             
             output_images.append(output[0])
-            
-        tile_qty = tile_rows * tile_cols
-        feather_mask = upscaled_width / tile_qty            
-                        
-        return Image.rebuild_image_from_parts(iteration, output_images, upscaled_image, feather_mask, rows = tile_rows, cols = tile_cols), output_images
+            output_image = Image.rebuild_image_from_image_parts(iteration, output_images, upscaled_image, feather_mask, rows = tile_rows, cols = tile_cols)
+                                    
+        return output_image, output_images
         
     @classmethod    
     def fn(self, **kwargs):

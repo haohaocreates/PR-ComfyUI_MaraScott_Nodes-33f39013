@@ -74,7 +74,7 @@ class Image:
         ]
 
     @classmethod
-    def get_grid_images(self, image, rows = 3, cols = 3):
+    def get_the_tiles(self, image, rows = 3, cols = 3):
         width, height = image.shape[2], image.shape[1]
         
         grid_specs = self.get_dynamic_grid_specs(width, height, rows, cols)
@@ -90,7 +90,7 @@ class Image:
         return grids
 
     @classmethod
-    def rebuild_image_from_parts(self, iteration, output_images, upscaled_image, feather_mask = 350, rows = 3, cols = 3):
+    def rebuild_image_from_image_parts(self, iteration, output_images, upscaled_image, feather_mask = 350, rows = 3, cols = 3):
         
         upscaled_width = upscaled_image.shape[2]
         upscaled_height = upscaled_image.shape[1]
