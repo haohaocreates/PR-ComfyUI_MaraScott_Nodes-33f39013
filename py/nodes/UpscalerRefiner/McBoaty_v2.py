@@ -75,6 +75,145 @@ class UpscalerRefiner_McBoaty_v2(UpscalerRefiner_McBoaty):
     )
     
     @classmethod
+    def refine_image_entirely(
+        self,
+        image_to_tile,
+        model, 
+        add_noise, 
+        noise_seed, 
+        cfg, 
+        positive, 
+        negative, 
+        upscale_model,
+        sampler, 
+        sigmas,
+        tiled,
+        tile_rows,
+        tile_cols,
+        vae,
+        tile_size,
+        iteration,        
+        upscaled_image,
+        feather_mask,              
+    ):
+        
+        grid_latents = []
+        grid_latent_outputs = []
+        output_images = []
+        
+        upscaled_image_to_tile = comfy_extras.nodes_upscale_model.ImageUpscaleWithModel.upscale(comfy_extras.nodes_upscale_model.ImageUpscaleWithModel, upscale_model, image_to_tile)[0]
+        if tiled == True:
+            latent_to_tile = nodes.VAEEncodeTiled.encode(nodes.VAEEncodeTiled, vae, upscaled_image_to_tile, tile_size)[0]
+        else:
+            latent_to_tile = nodes.VAEEncode.encode(nodes.VAEEncode, vae, upscaled_image_to_tile)[0]
+        grid_latents = Image.get_the_tiles(latent_to_tile, tile_rows, tile_cols)
+        total = len(grid_latents)
+                    
+        for index, latent_image in enumerate(grid_latents):            
+            log(f"tile {index + 1}/{total}", None, None, f"Refining {iteration}")
+            latent_output = comfy_extras.nodes_custom_sampler.SamplerCustom.sample(
+                comfy_extras.nodes_custom_sampler.SamplerCustom, 
+                model, 
+                add_noise, 
+                noise_seed, 
+                cfg, 
+                positive, 
+                negative, 
+                sampler, 
+                sigmas, 
+                latent_image
+            )[0]
+            grid_latent_outputs.append(latent_output)
+
+        for index, latent_output in enumerate(grid_latent_outputs):            
+            if tiled == True:
+                log(f"tile {index + 1}/{total}", None, None, f"VAEDecodingTiled {iteration}")
+                output = nodes.VAEDecodeTiled.decode(nodes.VAEDecodeTiled, vae, latent_output, tile_size)[0].unsqueeze(0)
+            else:
+                log(f"tile {index + 1}/{total}", None, None, f"VAEDecoding {iteration}")
+                output = nodes.VAEDecode.decode(nodes.VAEDecode, vae, latent_output)[0].unsqueeze(0)
+            
+            output_images.append(output[0])
+            output_image = Image.rebuild_image_from_image_parts(iteration, output_images, upscaled_image, feather_mask, rows = tile_rows, cols = tile_cols)
+                                    
+        return output_image, output_images
+    
+    @classmethod
+    def refine_image_per_tile(
+        self,
+        image_to_tile, 
+        model, 
+        add_noise, 
+        noise_seed, 
+        cfg, 
+        positive, 
+        negative, 
+        upscale_model,
+        sampler, 
+        sigmas,
+        tiled,
+        tile_rows,
+        tile_cols,
+        vae,
+        tile_size,
+        iteration,        
+        upscaled_image,
+        feather_mask,              
+    ):
+
+        grid_upscales = []
+        grid_latents = []
+        grid_latent_outputs = []
+        output_images = []
+                    
+        grid_images = Image.get_the_tiles(image_to_tile, tile_rows, tile_cols)
+        total = len(grid_images)
+
+        for index, grid_image in enumerate(grid_images):            
+            log(f"tile {index + 1}/{total}", None, None, f"Upscaling {iteration}")
+            _image_grid = grid_image[:,:,:,:3]
+            upscaled_image_grid = comfy_extras.nodes_upscale_model.ImageUpscaleWithModel.upscale(comfy_extras.nodes_upscale_model.ImageUpscaleWithModel, upscale_model, _image_grid)[0]
+            grid_upscales.append(upscaled_image_grid)
+            
+        for index, upscaled_image_grid in enumerate(grid_upscales):
+            if tiled == True:
+                log(f"tile {index + 1}/{total}", None, None, f"VAEEncodingTiled {iteration}")
+                latent_image = nodes.VAEEncodeTiled.encode(nodes.VAEEncodeTiled, vae, upscaled_image_grid, tile_size)[0]
+            else:
+                log(f"tile {index + 1}/{total}", None, None, f"VAEEncoding {iteration}")
+                latent_image = nodes.VAEEncode.encode(nodes.VAEEncode, vae, upscaled_image_grid)[0]
+            grid_latents.append(latent_image)
+                
+        for index, latent_image in enumerate(grid_latents):            
+            log(f"tile {index + 1}/{total}", None, None, f"Refining {iteration}")
+            latent_output = comfy_extras.nodes_custom_sampler.SamplerCustom.sample(
+                comfy_extras.nodes_custom_sampler.SamplerCustom, 
+                model, 
+                add_noise, 
+                noise_seed, 
+                cfg, 
+                positive, 
+                negative, 
+                sampler, 
+                sigmas, 
+                latent_image
+            )[0]
+            grid_latent_outputs.append(latent_output)
+
+        for index, latent_output in enumerate(grid_latent_outputs):            
+            if tiled == True:
+                log(f"tile {index + 1}/{total}", None, None, f"VAEDecodingTiled {iteration}")
+                output = nodes.VAEDecodeTiled.decode(nodes.VAEDecodeTiled, vae, latent_output, tile_size)[0].unsqueeze(0)
+            else:
+                log(f"tile {index + 1}/{total}", None, None, f"VAEDecoding {iteration}")
+                output = nodes.VAEDecode.decode(nodes.VAEDecode, vae, latent_output)[0].unsqueeze(0)
+            
+            output_images.append(output[0])
+            output_image = Image.rebuild_image_from_image_parts(iteration, output_images, upscaled_image, feather_mask, rows = tile_rows, cols = tile_cols)
+                                    
+        return output_image, output_images
+    
+    @classmethod
     def upscale_refine(
         self, 
         iteration,
@@ -91,7 +230,7 @@ class UpscalerRefiner_McBoaty_v2(UpscalerRefiner_McBoaty):
         positive, 
         negative, 
         sampler, 
-        sigmas
+        sigmas,
     ):
         upscaled_image = comfy_extras.nodes_upscale_model.ImageUpscaleWithModel.upscale(comfy_extras.nodes_upscale_model.ImageUpscaleWithModel, upscale_model, image)[0]
         
@@ -102,9 +241,50 @@ class UpscalerRefiner_McBoaty_v2(UpscalerRefiner_McBoaty):
         tile_qty = tile_rows * tile_cols
         feather_mask = upscaled_width / tile_qty        
         
-        image_to_tile = upscaled_image
         if per_tile_refiner:
             image_to_tile = image
+            output_image, output_images = self.refine_image_entirely(
+                image,
+                model, 
+                add_noise, 
+                noise_seed, 
+                cfg, 
+                positive, 
+                negative, 
+                upscale_model,
+                sampler, 
+                sigmas,
+                tiled,
+                tile_rows,
+                tile_cols,
+                vae,
+                tile_size,
+                iteration,
+                upscaled_image,
+                feather_mask,              
+            )
+        else:
+            image_to_tile = upscaled_image
+            output_image, output_images = self.refine_image_per_tile(
+                upscaled_image,
+                model, 
+                add_noise, 
+                noise_seed, 
+                cfg, 
+                positive, 
+                negative, 
+                upscale_model,
+                sampler, 
+                sigmas,
+                tiled,
+                tile_rows,
+                tile_cols,                
+                vae,
+                tile_size,
+                iteration,        
+                upscaled_image,
+                feather_mask,              
+            )
         
 
         grid_upscales = []
@@ -141,6 +321,7 @@ class UpscalerRefiner_McBoaty_v2(UpscalerRefiner_McBoaty):
             for index, grid_latent in enumerate(grid_latents):            
                 log(f"tile {index + 1}/{total}", None, None, f"Upscaling {iteration}")
                 _latent_grid = grid_latent[:,:,:,:3]
+                # NNLatentUpscale
                 upscaled_latent_grid = comfy_extras.nodes_upscale_model.ImageUpscaleWithModel.upscale(comfy_extras.nodes_upscale_model.ImageUpscaleWithModel, upscale_model, _latent_grid)[0]
                 grid_upscales.append(upscaled_latent_grid)            
                     
