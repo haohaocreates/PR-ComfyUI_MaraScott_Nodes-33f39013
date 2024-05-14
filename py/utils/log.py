@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding:utf-8 -*-
+# 
+# this code as been copied from rgthree-comfyui node
 #
 ###
 

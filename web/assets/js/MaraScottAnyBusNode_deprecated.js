@@ -55,7 +55,7 @@ class MaraScottAnyBusNodeWidget {
 
 		this.setProfileInput(node)
 		this.setInputsSelect(node)
-		this.setCleanSwitch(node)
+		// this.setCleanSwitch(node)
 
 	}
 

@@ -5,6 +5,8 @@
 
 import torch
 
+from ..utils.log import *
+
 # Hack: string type that is always equal in not equal comparisons
 class AnyType(str):
     def __ne__(self, __value: object) -> bool:
@@ -67,6 +69,18 @@ class Configuration:
         if filtered_kwargs:
             # If there are matching keys, return the value of the first one found
             return next(iter(filtered_kwargs.values()))
+        else:
+            # If no matching keys found, return the default value
+            return default_value
+        
+    def get_kwarg_name_with_prefix(kwargs, prefix, default_value="* xx - any"):
+        filtered_kwargs = {key: value for key, value in kwargs.items() if key.startswith(prefix)}
+        
+        log({"prefix": prefix, "filtered_kwargs": filtered_kwargs, "items": kwargs.items()})
+        
+        if filtered_kwargs:
+            # If there are matching keys, return the value of the first one found
+            return next(iter(filtered_kwargs.keys()))
         else:
             # If no matching keys found, return the default value
             return default_value
